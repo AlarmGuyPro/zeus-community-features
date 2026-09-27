@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generated": "2026-09-17T13:57:33Z",
+  "generated": "2026-09-27T16:52:49Z",
   "plugins": [
     {
       "id": "com.openhpsdr.zeus.plugins.localsignon",
@@ -711,6 +711,31 @@
           ],
           "downloadUrl": "https://downloads.zeussdr.com/plugins/releases/download/vk3amp-v1.0.0/vk3amp-1.0.0.zip",
           "sha256": "010072d4e36052ef9d67efe37c667fd76204cd8cf8f4f7ae03cda8c1ede0759c"
+        }
+      ]
+    },
+    {
+      "id": "com.kq4wlr.zeus.pw2bridge",
+      "channel": "community",
+      "name": "IC-PW2 Bridge",
+      "description": "Control and monitoring for the Icom IC-PW2 1 kW amplifier over CI-V serial: power, SWR, ALC, Vd/Id, temperature and protection metering; OPER/STBY, power, input, antenna and tuner control; automatic band-follow from Zeus radio state with TX hold-off; 60 m sub-band and overheat STBY interlocks. Never keys the transmitter.",
+      "author": "KQ4WLR",
+      "license": "GPL-2.0-or-later",
+      "homepage": "https://github.com/AlarmGuyPro/zeus-pw-2-bridge",
+      "categories": [
+        "amplifiers"
+      ],
+      "verified": false,
+      "versions": [
+        {
+          "version": "1.0.0",
+          "sdkAbi": 1,
+          "sdkMinVersion": "1.5.0",
+          "platforms": [
+            "win-x64"
+          ],
+          "downloadUrl": "https://github.com/Zeus-SDR/zeus-community-features/releases/download/community-com.kq4wlr.zeus.pw2bridge-v1.0.0/com.kq4wlr.zeus.pw2bridge-1.0.0.zip",
+          "sha256": "7b29ca283575b7d0cca903e72c5087c8c9bdecfe44ab91243ed221dc756c361f"
         }
       ]
     }

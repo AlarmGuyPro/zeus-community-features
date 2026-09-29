@@ -382,8 +382,13 @@ created; the catalog package check must download the Zeus-SDR URL successfully
 before approval. If any package byte must change, stop and publish a new SemVer
 version instead of replacing the intake or custody asset.
 
-Once a maintainer merges the listing into `main`, it becomes part of the public
-catalog. Zeus shows it in **Features → Community** after the catalog cache
+Once a maintainer merges the listing into `main`, the validation workflow
+automatically publishes the catalog to the download host after its schema,
+six-platform build, and package checks pass. It verifies the public catalog
+content against the validated commit, allowing the download host's release URL
+mapping; a publication failure is visible in Actions.
+See [catalog publishing setup](README.md#catalog-publishing-setup-maintainers)
+for the required secrets and retry procedure. Zeus shows it in **Features → Community** after the catalog cache
 refreshes (normally within about five minutes). Users still choose whether to
 install it. Merge does not auto-install the feature, set `verified` to `true`,
 or turn execution into a sandbox.

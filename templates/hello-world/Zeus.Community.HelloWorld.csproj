@@ -8,7 +8,7 @@
   </PropertyGroup>
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
-    <ProjectReference Include="../../sdk/Openhpsdr.Zeus.Plugins.Contracts/Zeus.Plugins.Contracts.csproj"
+    <ProjectReference Include="../../sdk/Zeussdr.Zeus.Plugins.Contracts/Zeus.Plugins.Contracts.csproj"
                       Private="false" />
   </ItemGroup>
   <ItemGroup>

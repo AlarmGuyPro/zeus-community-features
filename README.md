@@ -9,7 +9,7 @@ It contains:
 
 - `registry.json`, the schema-version 1 catalog consumed by Zeus;
 - `schema/`, the registry and embedded `plugin.json` contracts;
-- `sdk/Openhpsdr.Zeus.Plugins.Contracts/`, a standalone source snapshot of
+- `sdk/Zeussdr.Zeus.Plugins.Contracts/`, a standalone source snapshot of
   ABI 1 / SDK 1.5.0;
 - `templates/hello-world/`, a feature that builds without a sibling Zeus
   checkout;
@@ -47,7 +47,7 @@ Use this release and submission flow:
 
 1. **Create a separate public source repository for your feature.** Start from
    [`templates/hello-world/`](templates/hello-world/) and reference only the
-   contracts under [`sdk/Openhpsdr.Zeus.Plugins.Contracts/`](sdk/Openhpsdr.Zeus.Plugins.Contracts/)
+   contracts under [`sdk/Zeussdr.Zeus.Plugins.Contracts/`](sdk/Zeussdr.Zeus.Plugins.Contracts/)
    and, for visual features, the documented `registerPanel` and `callBackend`
    browser API. Do not copy or depend on private Zeus source, undocumented
    endpoints, host internals, DSP/radio protocol code, credentials, binaries,

@@ -17,7 +17,7 @@ tree.
 
 Use only:
 
-- the public types in `sdk/Openhpsdr.Zeus.Plugins.Contracts/`;
+- the public types in `sdk/Zeussdr.Zeus.Plugins.Contracts/`;
 - the manifest fields in `schema/plugin.schema.json`;
 - `registerPanel` and `callBackend`, the complete ABI-1 browser API described
   below.

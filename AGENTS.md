@@ -114,7 +114,7 @@ policy. Passing schema validation alone is not sufficient.
 
 ## Public boundary
 
-- Treat `sdk/Openhpsdr.Zeus.Plugins.Contracts/` as the complete integration
+- Treat `sdk/Zeussdr.Zeus.Plugins.Contracts/` as the complete integration
   boundary. Use only its public types and the browser API documented in
   `CONTRIBUTING.md`.
 - Never request, copy, translate, reconstruct, or depend on private Zeus source,

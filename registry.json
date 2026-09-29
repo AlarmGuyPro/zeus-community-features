@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generated": "2026-09-29T21:23:47Z",
+  "generated": "2026-09-30T16:23:25Z",
   "plugins": [
     {
       "id": "com.openhpsdr.zeus.plugins.localsignon",
@@ -746,6 +746,36 @@
           ],
           "downloadUrl": "https://github.com/Zeus-SDR/zeus-community-features/releases/download/community-com.kq4wlr.zeus.pw2bridge-v1.1.0/com.kq4wlr.zeus.pw2bridge-1.1.0.zip",
           "sha256": "4587a5c98be1a2be2ea96eb3efa8a58f1e7df2a56c978bc0840d0e1584a82449"
+        }
+      ]
+    },
+    {
+      "id": "io.github.alarmguypro.powerstation",
+      "channel": "community",
+      "name": "PowerStation",
+      "description": "Control and monitor Shelly relays, plugs, dimmers, colour lights and energy meters on your LAN, with scenes and rules driven by Zeus.",
+      "author": "KQ4WLR",
+      "license": "GPL-2.0-or-later",
+      "homepage": "https://github.com/AlarmGuyPro/Zeus-PowerStation",
+      "categories": [
+        "switches"
+      ],
+      "verified": false,
+      "versions": [
+        {
+          "version": "1.1.0",
+          "sdkAbi": 1,
+          "sdkMinVersion": "1.5.0",
+          "platforms": [
+            "any"
+          ],
+          "downloadUrl": "https://github.com/Zeus-SDR/zeus-community-features/releases/download/community-io.github.alarmguypro.powerstation-v1.1.0/io.github.alarmguypro.powerstation-1.1.0.zip",
+          "sha256": "34204b4e2445a59d15ac0bbc2d77c8d705a562dbf7e68a0f619631e6b92a2ba5",
+          "source": {
+            "repository": "https://github.com/AlarmGuyPro/Zeus-PowerStation",
+            "commit": "00e8a6e2583c66e2659be0c869893039e7fb95c3",
+            "package": "https://github.com/AlarmGuyPro/Zeus-PowerStation/releases/download/v1.1.0/io.github.alarmguypro.powerstation-1.1.0.zip"
+          }
         }
       ]
     }

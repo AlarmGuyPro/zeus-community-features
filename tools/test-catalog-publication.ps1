@@ -57,6 +57,8 @@ try {
         $published.Replace('2026-09-29', '2026-09-28'),
         $published.Replace('downloads.zeussdr.com', 'example.com'),
         $published.Replace('com.example.feature-1.0.0.zip', 'wrong.zip'),
+        $published.Replace('com.example.feature-1.0.0.zip', 'com.example.feature-1.0.0.zip?extra=true'),
+        ($published -creplace '\"versions\":\[.*?\]', '"versions":[]'),
         $published.Replace('"sha256":"abc123"', '"sha256":"abc123","extra":true'),
         $source
     )) {

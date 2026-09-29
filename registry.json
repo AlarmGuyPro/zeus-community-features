@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generated": "2026-09-29T12:11:32Z",
+  "generated": "2026-09-29T21:23:47Z",
   "plugins": [
     {
       "id": "com.openhpsdr.zeus.plugins.localsignon",
@@ -727,6 +727,16 @@
       ],
       "verified": false,
       "versions": [
+        {
+          "version": "1.1.1",
+          "sdkAbi": 1,
+          "sdkMinVersion": "1.5.0",
+          "platforms": [
+            "win-x64"
+          ],
+          "downloadUrl": "https://github.com/Zeus-SDR/zeus-community-features/releases/download/community-com.kq4wlr.zeus.pw2bridge-v1.1.1/com.kq4wlr.zeus.pw2bridge-1.1.1.zip",
+          "sha256": "b1e9863b35013bf20469a1ec14d3fa214c665a1aeefc28fe99aa229f24ebf341"
+        },
         {
           "version": "1.1.0",
           "sdkAbi": 1,

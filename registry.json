@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generated": "2026-09-17T13:57:33Z",
+  "generated": "2026-09-29T12:11:32Z",
   "plugins": [
     {
       "id": "com.openhpsdr.zeus.plugins.localsignon",
@@ -711,6 +711,31 @@
           ],
           "downloadUrl": "https://downloads.zeussdr.com/plugins/releases/download/vk3amp-v1.0.0/vk3amp-1.0.0.zip",
           "sha256": "010072d4e36052ef9d67efe37c667fd76204cd8cf8f4f7ae03cda8c1ede0759c"
+        }
+      ]
+    },
+    {
+      "id": "com.kq4wlr.zeus.pw2bridge",
+      "channel": "community",
+      "name": "IC-PW2 Bridge",
+      "description": "Control and monitoring for the Icom IC-PW2 linear amplifier over CI-V serial, with automatic band-follow driven by Zeus radio state. Displays output power, SWR, ALC, drain voltage/current, temperature, humidity, and protection status.",
+      "author": "KQ4WLR",
+      "license": "GPL-2.0-or-later",
+      "homepage": "https://github.com/AlarmGuyPro/zeus-pw-2-bridge",
+      "categories": [
+        "amplifiers"
+      ],
+      "verified": false,
+      "versions": [
+        {
+          "version": "1.1.0",
+          "sdkAbi": 1,
+          "sdkMinVersion": "1.5.0",
+          "platforms": [
+            "win-x64"
+          ],
+          "downloadUrl": "https://github.com/Zeus-SDR/zeus-community-features/releases/download/community-com.kq4wlr.zeus.pw2bridge-v1.1.0/com.kq4wlr.zeus.pw2bridge-1.1.0.zip",
+          "sha256": "4587a5c98be1a2be2ea96eb3efa8a58f1e7df2a56c978bc0840d0e1584a82449"
         }
       ]
     }

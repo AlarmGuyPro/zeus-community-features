@@ -100,10 +100,41 @@ green. Removing the contributor's release later cannot break the store copy.
 Protected `main` requires passing checks, resolved review conversations, and
 approval from either Douglas J. Cerrato (KB2UKA / `@Kb2uka`) or Christian
 Suarez (N9WAR / `@iamexemplar`). Either maintainer may validate and merge a
-submission independently; approval from both is not required. After merge,
-Zeus shows the listing in **Features → Community** when its catalog cache
+submission independently; approval from both is not required. After merge, the
+validation workflow automatically publishes the catalog to the download host
+once schema, all platform builds, and package checks pass. Zeus shows the listing in **Features → Community** when its catalog cache
 refreshes, normally within about five minutes. Users still choose whether to
 install it; catalog approval never auto-installs a feature or marks it verified.
+
+## Catalog publishing setup (maintainers)
+
+Every push to protected `main` in `Zeus-SDR/zeus-community-features` runs
+**Validate community catalog and SDK**. After its validation jobs pass,
+**Publish download-host catalog** uploads the exact validated `registry.json`
+to `zeussdr-downloads/plugins/registry.json` in Cloudflare R2 and verifies the
+complete JSON content served at
+<https://downloads.zeussdr.com/plugins/registry.json>. Verification permits only
+JSON formatting differences and the download host's deterministic GitHub
+release URL mapping; all metadata and package hashes must match. Pull requests and forks
+cannot run this publication job. It publishes catalog data only, without
+installing or executing feature packages.
+
+Configure these Actions repository secrets before the first publication:
+
+- `CLOUDFLARE_ACCOUNT_ID`: the account owning `zeussdr-downloads`.
+- `CLOUDFLARE_API_TOKEN`: an R2 Object Read & Write token scoped to that bucket.
+
+Keep the bucket's `downloads.zeussdr.com` custom domain enabled. The upload sets
+`Content-Type: application/json` and `Cache-Control: public, max-age=60`; CDN
+cache rules must honor that short lifetime. Zeus also caches the catalog, so
+allow about five minutes after successful publication before clicking **Reload**.
+
+Publication is serialized and skips a validated commit if `main` has advanced.
+A new main push does not interrupt an upload already in progress. A failed
+upload or public catalog mismatch fails the job visibly in Actions. After
+fixing credentials or delivery configuration, run **Validate community catalog
+and SDK** manually with branch **main** selected to validate and publish the
+current catalog again. Manual runs on other branches cannot publish.
 
 ## Trust model
 

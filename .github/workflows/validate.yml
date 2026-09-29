@@ -12,7 +12,7 @@ permissions:
 
 concurrency:
   group: community-validate-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   schema:
@@ -42,6 +42,10 @@ jobs:
       - name: Test community custody policy
         shell: pwsh
         run: ./tools/test-community-custody.ps1
+
+      - name: Test catalog publication safeguards
+        shell: pwsh
+        run: ./tools/test-catalog-publication.ps1
 
   build:
     name: SDK and template build (${{ matrix.name }})
@@ -86,3 +90,50 @@ jobs:
       - name: Download and validate every immutable package
         shell: pwsh
         run: ./tools/validate-registry.ps1 -DownloadPackages
+
+  publish:
+    name: Publish download-host catalog
+    needs: [schema, build, packages]
+    if: >-
+      github.repository == 'Zeus-SDR/zeus-community-features' &&
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency:
+      group: community-catalog-publication
+      cancel-in-progress: false
+    steps:
+      - name: Check out the validated commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Install pinned upload client
+        run: npm install --prefix "$RUNNER_TEMP/catalog-publisher" --no-audit --no-fund --ignore-scripts wrangler@4.103.0
+      - name: Publish current main catalog
+        id: upload
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          current_sha="$(gh api repos/Zeus-SDR/zeus-community-features/git/ref/heads/main --jq '.object.sha')"
+          if [[ "$current_sha" != "$GITHUB_SHA" ]]; then
+            echo "Skipping superseded commit $GITHUB_SHA; main is $current_sha." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          : "${CLOUDFLARE_ACCOUNT_ID:?Set the CLOUDFLARE_ACCOUNT_ID repository secret}"
+          : "${CLOUDFLARE_API_TOKEN:?Set the CLOUDFLARE_API_TOKEN repository secret}"
+          "$RUNNER_TEMP/catalog-publisher/node_modules/.bin/wrangler" r2 object put \
+            zeussdr-downloads/plugins/registry.json --remote --file registry.json \
+            --content-type application/json --cache-control 'public, max-age=60'
+          echo 'published=true' >> "$GITHUB_OUTPUT"
+      - name: Verify the public catalog content
+        if: steps.upload.outputs.published == 'true'
+        shell: pwsh
+        run: |
+          ./tools/verify-published-catalog.ps1
+          "Published and verified registry.json from commit $env:GITHUB_SHA at https://downloads.zeussdr.com/plugins/registry.json" >> $env:GITHUB_STEP_SUMMARY

@@ -1418,7 +1418,8 @@ function Get-SandboxArguments {
         [Parameter(Mandatory)][string] $SourceRoot,
         [Parameter(Mandatory)][string] $PrivateRoot,
         [Parameter(Mandatory)][string] $WorkingDirectory,
-        [Parameter(Mandatory)][string[]] $Command
+        [Parameter(Mandatory)][string[]] $Command,
+        [AllowEmptyCollection()][string[]] $ReadOnlyPaths = @()
     )
     $arguments = [Collections.Generic.List[string]]::new()
     $arguments.AddRange([string[]]@(
@@ -1428,7 +1429,17 @@ function Get-SandboxArguments {
         "--tmpfs", "/tmp",
         "--tmpfs", "/run",
         "--bind", $SourceRoot, $SourceRoot,
-        "--bind", $PrivateRoot, $PrivateRoot,
+        "--bind", $PrivateRoot, $PrivateRoot
+    ))
+    # Trusted inputs (the verified feed, our nuget.config) are re-exposed
+    # read-only after the private /tmp and /run mounts, so they stay
+    # visible when the work tree lives below /tmp.
+    foreach ($path in @($ReadOnlyPaths | Where-Object { $_ })) {
+        $full = [IO.Path]::GetFullPath($path)
+        if (-not (Test-Path -LiteralPath $full)) { throw "Read-only sandbox input does not exist: $full" }
+        $arguments.AddRange([string[]]@("--ro-bind", $full, $full))
+    }
+    $arguments.AddRange([string[]]@(
         "--unshare-all",
         "--die-with-parent",
         "--new-session",
@@ -1461,12 +1472,13 @@ function Invoke-Sandboxed {
         [Parameter(Mandatory)][string] $SourceRoot,
         [Parameter(Mandatory)][string] $PrivateRoot,
         [Parameter(Mandatory)][string] $WorkingDirectory,
-        [Parameter(Mandatory)][string[]] $Command
+        [Parameter(Mandatory)][string[]] $Command,
+        [AllowEmptyCollection()][string[]] $ReadOnlyPaths = @()
     )
     $bwrap = Get-Bubblewrap
     Initialize-SandboxPrivateRoot -PrivateRoot $PrivateRoot
     $arguments = Get-SandboxArguments -SourceRoot $SourceRoot -PrivateRoot $PrivateRoot `
-        -WorkingDirectory $WorkingDirectory -Command $Command
+        -WorkingDirectory $WorkingDirectory -Command $Command -ReadOnlyPaths $ReadOnlyPaths
     & $bwrap @arguments | Out-Host
     return $LASTEXITCODE
 }
@@ -1514,14 +1526,31 @@ if timeout 5 getent hosts github.com >/dev/null 2>&1; then echo "name resolution
 [ -e /run/systemd/resolve ] && { echo "resolver socket visible"; exit 13; }
 [ -e /var/run/docker.sock ] && { echo "docker socket visible"; exit 14; }
 grep -q '^CapEff:[[:space:]]*0*$' /proc/self/status || { echo "capabilities retained"; exit 15; }
-for dir in "$@"; do
+verified=0
+while [ "$#" -ge 2 ]; do
+  dir=$1; id=$2; shift 2
+  # Only the host directory itself matters. Under a sandbox tmpfs (for
+  # example a work tree below /tmp) a path can name a private stand-in
+  # instead; writing there never reaches the host.
+  [ "$(stat -c %d:%i "$dir" 2>/dev/null)" = "$id" ] || continue
   if ( : > "$dir/$token" ) 2>/dev/null; then echo "wrote host directory $dir"; exit 16; fi
+  verified=$((verified + 1))
 done
+[ "$verified" -gt 0 ] || { echo "no host directory was visible to prove the host filesystem is read-only"; exit 19; }
 ( : > "/tmp/$token" ) 2>/dev/null || { echo "private /tmp is not writable"; exit 17; }
 ( : > "$HOME/$token" ) 2>/dev/null || { echo "private home is not writable"; exit 18; }
 echo "$token"
 '@
-    $command = @("sh", "-c", $script, "zeus-probe", $token, $hostPid, $hostNet) + $probes
+    # Pair every probe directory with its host device:inode identity.
+    $identities = foreach ($probe in $probes) {
+        $statOutput = @(& stat -c '%d:%i' -- $probe 2>$null)
+        $statCode = $LASTEXITCODE
+        $identity = if ($statOutput.Count -gt 0) { [string]$statOutput[0] } else { "" }
+        if ($statCode -ne 0 -or $identity -cnotmatch '^[0-9]+:[0-9]+$') { throw "Could not read the identity of $probe" }
+        $probe
+        [string]$identity
+    }
+    $command = @("sh", "-c", $script, "zeus-probe", $token, $hostPid, $hostNet) + @($identities)
     $arguments = Get-SandboxArguments -SourceRoot $SourceRoot -PrivateRoot $PrivateRoot `
         -WorkingDirectory $SourceRoot -Command $command
     $output = @(& $bwrap @arguments 2>&1 | ForEach-Object { [string]$_ })

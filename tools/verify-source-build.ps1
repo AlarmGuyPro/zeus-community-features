@@ -246,7 +246,8 @@ if ($Phase -in @("All", "Build")) {
                 "--nologo", "--disable-build-servers") + $globals
             if ($lockedPackages.Count -gt 0) { $restore += "--locked-mode" }
             Write-Host "-- sandboxed dotnet restore (verified local feed only)"
-            $code = Invoke-Sandboxed -SourceRoot $root -PrivateRoot $privateRoot -WorkingDirectory $root -Command $restore
+            $code = Invoke-Sandboxed -SourceRoot $root -PrivateRoot $privateRoot -WorkingDirectory $root -Command $restore `
+                -ReadOnlyPaths @($feed, $config)
             if ($code -ne 0) { throw "Sandboxed dotnet restore failed with exit code $code" }
             Add-Findings $findings (Get-AssetsFilePackageFindings -Root $root -ProjectPath $contract.project `
                 -Packages $lockedPackages -Allowlist $allowlist `

@@ -298,43 +298,92 @@ try {
     }
     if ($joined.Contains("must-not-leak") -or $joined -match '(^| )--bind / ') { throw "Sandbox arguments leak the host environment or filesystem" }
     if ($joined.IndexOf("--tmpfs /tmp") -gt $joined.IndexOf("--bind /work/src")) { throw "Source bind must follow the private /tmp mount" }
+    $roInput = Join-Path $tempRoot "ro-input"
+    New-Item -ItemType Directory -Path $roInput -Force | Out-Null
+    $roJoined = @(Get-SandboxArguments -SourceRoot "/work/src" -PrivateRoot "/work/private" -WorkingDirectory "/work/src" `
+        -Command @("true") -ReadOnlyPaths @($roInput)) -join " "
+    if (-not $roJoined.Contains("--ro-bind $roInput $roInput") -or
+        $roJoined.IndexOf("--ro-bind $roInput") -lt $roJoined.IndexOf("--tmpfs /tmp")) {
+        throw "Read-only inputs must be bound read-only after the private /tmp mount"
+    }
+    Assert-Throws -Label "missing read-only input" -Pattern "does not exist" -Block {
+        Get-SandboxArguments -SourceRoot "/work/src" -PrivateRoot "/work/private" -WorkingDirectory "/work/src" `
+            -Command @("true") -ReadOnlyPaths @((Join-Path $tempRoot "no-such-input"))
+    }
 
     # --- Live sandbox checks (Linux with bubblewrap). CI installs bubblewrap.
     $bwrap = Get-Command bwrap -CommandType Application -ErrorAction SilentlyContinue
     if ($IsLinux -and $null -ne $bwrap) {
-        $work = Join-Path $tempRoot "sandbox"
-        $sandboxSource = Join-Path $work "src"
-        $private = Join-Path $work "private"
-        $hostDir = Join-Path $work "host-owned"
-        New-Item -ItemType Directory -Path $sandboxSource, $private, $hostDir -Force | Out-Null
-        Assert-SandboxIsolation -SourceRoot $sandboxSource -PrivateRoot $private -HostWriteProbes @($hostDir, $work)
+        # Run every live check with the work tree directly below /tmp (the
+        # sandbox mounts a private tmpfs there, so parents become stand-ins)
+        # and below a private non-/tmp directory (host paths stay visible).
+        $layouts = [ordered]@{
+            "tmp" = "/tmp/zeus-sandbox-test-$([Guid]::NewGuid().ToString('N'))"
+            "private" = Join-Path ([Environment]::GetFolderPath("UserProfile")) ".zeus-sandbox-test-$([Guid]::NewGuid().ToString('N'))"
+        }
+        foreach ($layout in $layouts.GetEnumerator()) {
+            $work = Join-Path $layout.Value "sandbox"
+            try {
+                $sandboxSource = Join-Path $work "src"
+                $private = Join-Path $work "private"
+                $hostDir = Join-Path $work "host-owned"
+                New-Item -ItemType Directory -Path $sandboxSource, $private, $hostDir -Force | Out-Null
+                Assert-SandboxIsolation -SourceRoot $sandboxSource -PrivateRoot $private -HostWriteProbes @($hostDir, $work, $PSScriptRoot)
 
-        # Writes outside the source tree and private root fail; inside succeed.
-        $code = Invoke-Sandboxed -SourceRoot $sandboxSource -PrivateRoot $private -WorkingDirectory $sandboxSource `
-            -Command @("sh", "-c", "touch '$hostDir/escaped'")
-        if ($code -eq 0 -or (Test-Path -LiteralPath (Join-Path $hostDir "escaped"))) { throw "Sandbox wrote a host directory" }
-        $code = Invoke-Sandboxed -SourceRoot $sandboxSource -PrivateRoot $private -WorkingDirectory $sandboxSource `
-            -Command @("sh", "-c", "touch built.txt")
-        if ($code -ne 0 -or -not (Test-Path -LiteralPath (Join-Path $sandboxSource "built.txt"))) { throw "Sandbox could not write its source tree" }
+                # Writes outside the source tree and private root never reach the host; inside succeed.
+                $code = Invoke-Sandboxed -SourceRoot $sandboxSource -PrivateRoot $private -WorkingDirectory $sandboxSource `
+                    -Command @("sh", "-c", "touch '$hostDir/escaped' '$work/escaped'")
+                if ($code -eq 0 -or (Test-Path -LiteralPath (Join-Path $hostDir "escaped")) -or
+                    (Test-Path -LiteralPath (Join-Path $work "escaped"))) { throw "Sandbox wrote a host directory ($($layout.Key) layout)" }
+                $code = Invoke-Sandboxed -SourceRoot $sandboxSource -PrivateRoot $private -WorkingDirectory $sandboxSource `
+                    -Command @("sh", "-c", "touch '$PSScriptRoot/escaped'")
+                if ($code -eq 0 -or (Test-Path -LiteralPath (Join-Path $PSScriptRoot "escaped"))) { throw "Sandbox wrote the repository ($($layout.Key) layout)" }
+                $code = Invoke-Sandboxed -SourceRoot $sandboxSource -PrivateRoot $private -WorkingDirectory $sandboxSource `
+                    -Command @("sh", "-c", "touch built.txt")
+                if ($code -ne 0 -or -not (Test-Path -LiteralPath (Join-Path $sandboxSource "built.txt"))) { throw "Sandbox could not write its source tree ($($layout.Key) layout)" }
 
-        # No network and no name resolution.
-        $code = Invoke-Sandboxed -SourceRoot $sandboxSource -PrivateRoot $private -WorkingDirectory $sandboxSource `
-            -Command @("sh", "-c", "getent hosts github.com || timeout 5 bash -c 'exec 3<>/dev/tcp/140.82.112.3/443'")
-        if ($code -eq 0) { throw "Sandbox reached the network" }
+                # Trusted inputs stay readable (even below /tmp) and read-only.
+                $inputs = Join-Path $work "inputs"
+                New-Item -ItemType Directory -Path $inputs -Force | Out-Null
+                Set-Content -LiteralPath (Join-Path $inputs "feed.txt") -Value "verified"
+                $code = Invoke-Sandboxed -SourceRoot $sandboxSource -PrivateRoot $private -WorkingDirectory $sandboxSource `
+                    -Command @("sh", "-c", "grep -q verified '$inputs/feed.txt'") -ReadOnlyPaths @($inputs)
+                if ($code -ne 0) { throw "A read-only input was not visible in the sandbox ($($layout.Key) layout)" }
+                $code = Invoke-Sandboxed -SourceRoot $sandboxSource -PrivateRoot $private -WorkingDirectory $sandboxSource `
+                    -Command @("sh", "-c", "touch '$inputs/tampered'") -ReadOnlyPaths @($inputs)
+                if ($code -eq 0 -or (Test-Path -LiteralPath (Join-Path $inputs "tampered"))) { throw "A read-only input was writable ($($layout.Key) layout)" }
 
-        # Nothing started in the sandbox outlives it.
-        $code = Invoke-Sandboxed -SourceRoot $sandboxSource -PrivateRoot $private -WorkingDirectory $sandboxSource `
-            -Command @("sh", "-c", "(sleep 2; touch late.txt) >/dev/null 2>&1 & exit 0")
-        Start-Sleep -Seconds 4
-        if (Test-Path -LiteralPath (Join-Path $sandboxSource "late.txt")) { throw "A background process outlived the sandbox" }
+                # No network and no name resolution.
+                $code = Invoke-Sandboxed -SourceRoot $sandboxSource -PrivateRoot $private -WorkingDirectory $sandboxSource `
+                    -Command @("sh", "-c", "getent hosts github.com || timeout 5 bash -c 'exec 3<>/dev/tcp/140.82.112.3/443'")
+                if ($code -eq 0) { throw "Sandbox reached the network ($($layout.Key) layout)" }
 
-        # The environment is explicit: host variables do not leak in.
-        $env:ZEUS_TEST_SECRET = "must-not-leak"
-        $code = Invoke-Sandboxed -SourceRoot $sandboxSource -PrivateRoot $private -WorkingDirectory $sandboxSource `
-            -Command @("sh", "-c", 'test -z "$ZEUS_TEST_SECRET" && test -z "$GITHUB_TOKEN"')
-        Remove-Item Env:ZEUS_TEST_SECRET
-        if ($code -ne 0) { throw "Host environment leaked into the sandbox" }
-        Write-Host "Live bubblewrap sandbox checks passed."
+                # Nothing started in the sandbox outlives it.
+                $code = Invoke-Sandboxed -SourceRoot $sandboxSource -PrivateRoot $private -WorkingDirectory $sandboxSource `
+                    -Command @("sh", "-c", "(sleep 2; touch late.txt) >/dev/null 2>&1 & exit 0")
+                Start-Sleep -Seconds 4
+                if (Test-Path -LiteralPath (Join-Path $sandboxSource "late.txt")) { throw "A background process outlived the sandbox ($($layout.Key) layout)" }
+
+                # The environment is explicit: host variables do not leak in.
+                $env:ZEUS_TEST_SECRET = "must-not-leak"
+                $code = Invoke-Sandboxed -SourceRoot $sandboxSource -PrivateRoot $private -WorkingDirectory $sandboxSource `
+                    -Command @("sh", "-c", 'test -z "$ZEUS_TEST_SECRET" && test -z "$GITHUB_TOKEN"')
+                Remove-Item Env:ZEUS_TEST_SECRET
+                if ($code -ne 0) { throw "Host environment leaked into the sandbox ($($layout.Key) layout)" }
+
+                if ($layout.Key -eq "tmp") {
+                    # Every probe directory here is shadowed by the sandbox tmpfs, so
+                    # nothing proves the host is read-only: the probe must fail closed.
+                    Assert-Throws -Label "probe with no visible host directory" -Pattern "no host directory was visible" -Block {
+                        Assert-SandboxIsolation -SourceRoot $sandboxSource -PrivateRoot $private -HostWriteProbes @($hostDir, $work)
+                    }
+                }
+                Write-Host "Live bubblewrap sandbox checks passed ($($layout.Key) layout: $work)."
+            }
+            finally {
+                if (Test-Path -LiteralPath $layout.Value) { Remove-Item -LiteralPath $layout.Value -Recurse -Force }
+            }
+        }
     }
     elseif ($env:CI) { throw "bubblewrap is required for the sandbox tests in CI" }
     else { Write-Warning "bubblewrap is not available; live sandbox checks were not run." }

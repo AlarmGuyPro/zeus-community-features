@@ -97,17 +97,27 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # Update through the packaged system configuration (freshclam runs
+          # as root and drops to the clamav user), seeded from and saved back
+          # to the cache directory that clamscan reads with --database.
           db="$RUNNER_TEMP/clamav-db"
+          sys=/var/lib/clamav
           mkdir -p "$db"
-          printf 'DatabaseMirror database.clamav.net\nDatabaseDirectory %s\n' "$db" > "$RUNNER_TEMP/freshclam.conf"
-          if ! freshclam --config-file="$RUNNER_TEMP/freshclam.conf" --datadir="$db" --stdout; then
-            if ls "$db"/main.c[vl]d "$db"/daily.c[vl]d >/dev/null 2>&1; then
+          if compgen -G "$db/*.c[vl]d" >/dev/null; then
+            sudo cp "$db"/*.c[vl]d "$sys"/
+            sudo chown clamav:clamav "$sys"/*.c[vl]d
+          fi
+          if ! sudo freshclam --stdout; then
+            if compgen -G "$sys/main.c[vl]d" >/dev/null && compgen -G "$sys/daily.c[vl]d" >/dev/null; then
               echo "::warning::freshclam could not update; scanning with cached signatures"
             else
               echo "::error::No ClamAV signatures are available"
               exit 1
             fi
           fi
+          sudo cp "$sys"/*.c[vl]d "$db"/
+          sudo chown -R "$(id -u):$(id -g)" "$db"
+          ls -l "$db"
       - name: Install pinned osv-scanner
         if: steps.plan.outputs.count != '0'
         shell: bash

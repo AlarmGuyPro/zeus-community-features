@@ -1,0 +1,5 @@
+{
+  "schemaVersion": 1,
+  "description": "Maintainer-approved exceptions for tools/PackageSecurityScan. An entry suppresses one finding only when id, version, sha256 (of the package ZIP), ruleId, and file all match exactly. Every entry needs a reason and approvedBy. See tools/package-security-rules.md.",
+  "entries": []
+}

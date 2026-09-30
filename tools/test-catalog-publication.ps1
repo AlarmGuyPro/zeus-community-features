@@ -64,6 +64,13 @@ try {
     )) {
         Test-Verification -Responses @($mutation) -ShouldPass $false -ExpectedRequests 1
     }
+    # Source provenance is preserved verbatim; only downloadUrl is mapped.
+    $withSource = $source.Replace('"sha256":"abc123"', '"sha256":"abc123","source":{"repository":"https://github.com/example/feature","commit":"0123456789abcdef0123456789abcdef01234567","package":"https://github.com/example/feature/releases/download/v1.0.0/feature.zip"}')
+    [IO.File]::WriteAllText($fixture, $withSource)
+    $publishedWithSource = $withSource.Replace('https://github.com/Zeus-SDR/zeus-community-features/releases/download/', 'https://downloads.zeussdr.com/plugins/releases/download/')
+    Test-Verification -Responses @($publishedWithSource) -ShouldPass $true -ExpectedRequests 1
+    Test-Verification -Responses @($published) -ShouldPass $false -ExpectedRequests 1
+    Test-Verification -Responses @($publishedWithSource.Replace('https://github.com/example/feature/releases', 'https://downloads.zeussdr.com/plugins/releases')) -ShouldPass $false -ExpectedRequests 1
     # Existing download-host URLs must remain unchanged.
     [IO.File]::WriteAllText($fixture, $published)
     Test-Verification -Responses @($published) -ShouldPass $true -ExpectedRequests 1

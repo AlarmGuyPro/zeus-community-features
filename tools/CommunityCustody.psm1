@@ -58,6 +58,57 @@ function Assert-CommunityCustodyUrl {
     }
 }
 
+function Get-VersionSource {
+    param([Parameter(Mandatory)] $Release)
+    $property = $Release.PSObject.Properties["source"]
+    if ($null -eq $property) { return $null }
+    return $property.Value
+}
+
+function Assert-VersionSource {
+    param(
+        [Parameter(Mandatory)][string] $Key,
+        [AllowNull()] $Source
+    )
+    if ($null -eq $Source -or $Source -isnot [Management.Automation.PSCustomObject]) {
+        throw "$Key source must be an object with repository, commit, and package"
+    }
+    $names = @($Source.PSObject.Properties.Name | Sort-Object)
+    if (($names -join ",") -cne "commit,package,repository") {
+        throw "$Key source must contain exactly repository, commit, and package"
+    }
+    foreach ($name in $names) {
+        if ($Source.$name -isnot [string]) { throw "$Key source.$name must be a string" }
+    }
+    $repository = [string]$Source.repository
+    if ($repository -cnotmatch "^https://github\.com/([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+)$" -or
+        $Matches[1] -in @(".", "..") -or $Matches[2] -in @(".", "..") -or
+        $repository.EndsWith(".git", [StringComparison]::OrdinalIgnoreCase)) {
+        throw "$Key source.repository must be https://github.com/<owner>/<repo> without .git or a trailing slash"
+    }
+    if ([string]$Source.commit -cnotmatch "^[0-9a-f]{40}$") {
+        throw "$Key source.commit must be a full 40-character lowercase commit SHA"
+    }
+    if ([string]$Source.package -cnotmatch
+        "^https://github\.com/([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+)/releases/download/[^/?#%]+/[^/?#%]+\.zip$" -or
+        $Matches[1] -in @(".", "..") -or $Matches[2] -in @(".", "..")) {
+        throw "$Key source.package must be a GitHub Releases HTTPS ZIP URL"
+    }
+}
+
+function Assert-NewCommunityVersionSource {
+    param(
+        [Parameter(Mandatory)][string] $FeatureId,
+        [Parameter(Mandatory)] $Release
+    )
+    $key = "$FeatureId@$($Release.version)"
+    $source = Get-VersionSource -Release $Release
+    if ($null -eq $source) {
+        throw "$key is a new community version and must declare source.repository, source.commit, and source.package"
+    }
+    Assert-VersionSource -Key $key -Source $source
+}
+
 function Copy-HttpsFileWithLimit {
     param(
         [Parameter(Mandatory)][string] $SourceUrl,
@@ -147,4 +198,7 @@ Export-ModuleMember -Function `
     Get-CommunityCustodyAssetName, `
     Get-CommunityCustodyUrl, `
     Assert-CommunityCustodyUrl, `
+    Get-VersionSource, `
+    Assert-VersionSource, `
+    Assert-NewCommunityVersionSource, `
     Copy-HttpsFileWithLimit

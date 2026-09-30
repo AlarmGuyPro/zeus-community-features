@@ -1,0 +1,15 @@
+<!-- SPDX-License-Identifier: GPL-2.0-or-later -->
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Static security scanner for community plugin packages. It reads package
+       bytes only: assemblies are parsed with System.Reflection.Metadata and
+       never loaded, and scripts are scanned as text and never evaluated.
+       Shared framework only; no NuGet packages. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>PackageSecurityScan</AssemblyName>
+    <RootNamespace>PackageSecurityScan</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+</Project>

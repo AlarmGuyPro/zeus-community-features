@@ -1,0 +1,196 @@
+name: Package security scan
+
+# Runs protected-main tooling against the package bytes a catalog pull
+# request points at. Package and contributor code are only hashed, extracted,
+# and read as data (ClamAV, static scanner, OSV lockfile scan); nothing from
+# the fork is checked out or executed, so pull_request_target is safe here.
+
+on:
+  pull_request_target:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+    inputs:
+      backfill:
+        description: Scan every version in registry.json (report only, never touches pull requests)
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: package-security-scan-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+env:
+  OSV_SCANNER_VERSION: v2.6.0
+  OSV_SCANNER_SHA256: ca69b3d3cd08f889a49dc0a383122f71cc528b83803671df5fd874d97485b108
+  DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+  DOTNET_NOLOGO: '1'
+
+jobs:
+  scan:
+    name: Package security scan
+    if: github.event_name == 'pull_request_target' || inputs.backfill
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - name: Check out protected main tooling only
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: Zeus-SDR/zeus-community-features
+          ref: refs/heads/main
+          persist-credentials: false
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Read candidate registry without checking out fork code
+        if: github.event_name == 'pull_request_target'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+          CANDIDATE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: >-
+          ./tools/read-candidate-registry.ps1
+          -CandidateRepository $env:CANDIDATE_REPOSITORY
+          -CandidateSha $env:CANDIDATE_SHA
+          -OutputPath (Join-Path $env:RUNNER_TEMP 'candidate-registry.json')
+      - name: Plan which versions need scanning
+        id: plan
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Import-Module ./tools/SecurityScan.psm1 -Force
+          if ($env:GITHUB_EVENT_NAME -ceq 'pull_request_target') {
+            $candidate = Get-Content -Raw (Join-Path $env:RUNNER_TEMP 'candidate-registry.json') | ConvertFrom-Json -Depth 100
+            $base = Get-Content -Raw registry.json | ConvertFrom-Json -Depth 100
+            $count = @(Get-SecurityScanTargets -CandidateRegistry $candidate -BaseRegistry $base).Count
+          }
+          else {
+            $candidate = Get-Content -Raw registry.json | ConvertFrom-Json -Depth 100
+            $count = @(Get-SecurityScanTargets -CandidateRegistry $candidate -All).Count
+          }
+          "Versions to scan: $count" >> $env:GITHUB_STEP_SUMMARY
+          "count=$count" >> $env:GITHUB_OUTPUT
+      - name: Install ClamAV
+        if: steps.plan.outputs.count != '0'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends clamav
+          sudo systemctl stop clamav-freshclam || true
+          echo "day=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+        id: clamav
+      - name: Restore ClamAV signatures
+        if: steps.plan.outputs.count != '0'
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ${{ runner.temp }}/clamav-db
+          key: clamav-db-${{ steps.clamav.outputs.day }}
+          restore-keys: clamav-db-
+      - name: Update ClamAV signatures
+        if: steps.plan.outputs.count != '0'
+        shell: bash
+        run: |
+          set -euo pipefail
+          db="$RUNNER_TEMP/clamav-db"
+          mkdir -p "$db"
+          printf 'DatabaseMirror database.clamav.net\nDatabaseDirectory %s\n' "$db" > "$RUNNER_TEMP/freshclam.conf"
+          if ! freshclam --config-file="$RUNNER_TEMP/freshclam.conf" --datadir="$db" --stdout; then
+            if ls "$db"/main.c[vl]d "$db"/daily.c[vl]d >/dev/null 2>&1; then
+              echo "::warning::freshclam could not update; scanning with cached signatures"
+            else
+              echo "::error::No ClamAV signatures are available"
+              exit 1
+            fi
+          fi
+      - name: Install pinned osv-scanner
+        if: steps.plan.outputs.count != '0'
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL --proto '=https' --tlsv1.2 --max-filesize 134217728 \
+            -o "$RUNNER_TEMP/osv-scanner" \
+            "https://github.com/google/osv-scanner/releases/download/$OSV_SCANNER_VERSION/osv-scanner_linux_amd64"
+          echo "$OSV_SCANNER_SHA256  $RUNNER_TEMP/osv-scanner" | sha256sum -c -
+          chmod +x "$RUNNER_TEMP/osv-scanner"
+      - name: Build package scanner
+        run: dotnet build tools/PackageSecurityScan -c Release --nologo
+      - name: Scan new and changed community versions
+        if: github.event_name == 'pull_request_target'
+        shell: pwsh
+        run: |
+          ./tools/validate-registry.ps1 -RegistryPath (Join-Path $env:RUNNER_TEMP 'candidate-registry.json')
+          ./tools/invoke-security-scan.ps1 `
+            -Mode pull_request `
+            -RegistryPath (Join-Path $env:RUNNER_TEMP 'candidate-registry.json') `
+            -BaseRegistryPath registry.json `
+            -OutputDirectory (Join-Path $env:RUNNER_TEMP 'security-report') `
+            -ClamAv Required `
+            -ClamAvDatabase (Join-Path $env:RUNNER_TEMP 'clamav-db') `
+            -OsvScannerPath (Join-Path $env:RUNNER_TEMP 'osv-scanner') `
+            -SkipScannerBuild `
+            -RunUrl "$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
+          exit $LASTEXITCODE
+      - name: Backfill report for every listed version
+        if: github.event_name == 'workflow_dispatch'
+        continue-on-error: true
+        shell: pwsh
+        run: >-
+          ./tools/backfill-security-report.ps1
+          -OutputDirectory (Join-Path $env:RUNNER_TEMP 'security-report')
+          -ClamAv Auto
+          -ClamAvDatabase (Join-Path $env:RUNNER_TEMP 'clamav-db')
+          -OsvScannerPath (Join-Path $env:RUNNER_TEMP 'osv-scanner')
+          -RunUrl "$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
+      - name: Upload security report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: package-security-report
+          path: |
+            ${{ runner.temp }}/security-report/security-report.json
+            ${{ runner.temp }}/security-report/security-report.md
+          if-no-files-found: warn
+          retention-days: 30
+
+  report:
+    name: Publish security scan result
+    needs: scan
+    if: always() && github.event_name == 'pull_request_target'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    steps:
+      - name: Check out protected main publishing tool only
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: Zeus-SDR/zeus-community-features
+          ref: refs/heads/main
+          persist-credentials: false
+      - name: Receive the report data only
+        continue-on-error: true
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: package-security-report
+          path: ${{ runner.temp }}/security-report
+      - name: Upsert sticky comment and review label
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PULL_REQUEST_NUMBER: ${{ github.event.pull_request.number }}
+          SCAN_RESULT: ${{ needs.scan.result }}
+        run: >-
+          ./tools/publish-security-report.ps1
+          -Repository $env:GITHUB_REPOSITORY
+          -PullRequestNumber $env:PULL_REQUEST_NUMBER
+          -ReportPath (Join-Path $env:RUNNER_TEMP 'security-report/security-report.json')
+          -ScanResult $env:SCAN_RESULT
+          -RunUrl "$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"

@@ -2,8 +2,9 @@
 
 - Feature ID:
 - Version:
-- Source repository (public):
-- Contributor intake GitHub Releases HTTPS ZIP:
+- Source repository (public, matches `source.repository`):
+- Source commit (matches `source.commit`, contains `zeus-build.json`):
+- Contributor intake GitHub Releases HTTPS ZIP (matches `source.package`):
 - SHA-256 (lowercase):
 - Expected Zeus-SDR custody URL:
 - Platforms:
@@ -14,6 +15,12 @@
 - [ ] This listing pull request changes only `registry.json`.
 - [ ] The entry uses `channel: "community"`, `verified: false`, and no
       `subscription` field.
+- [ ] The new version includes `source` with the public repository, the full
+      commit SHA the ZIP was built from, and the intake ZIP URL.
+- [ ] That commit contains a `zeus-build.json` rebuild contract, a
+      `global.json` pinning one exact SDK with `rollForward: "disable"`, and a
+      `packages.lock.json` beside every project with NuGet packages, and the
+      ZIP was built from that exact commit with that SDK.
 - [ ] The embedded `plugin.json` and catalog agree on ID, version, SDK ABI, and
       minimum SDK version.
 - [ ] The intake ZIP is the exact locally tested artifact, is available over
@@ -34,6 +41,9 @@
 - [ ] All contributor-side commands in “Required local checks” pass. I
       understand the custody-download check becomes green only after maintainer
       intake.
+- [ ] I will explain any Package security scan or Source rebuild finding in
+      this pull request rather than changing tools, workflows, or the scanner
+      allowlist.
 
 ## Capability and safety review
 
@@ -58,6 +68,9 @@ Maintainer custody gate (completed by either maintainer after content review):
 
 - [ ] Source, provenance, permissions, UI, licensing, and operator-safety
       evidence have been reviewed.
+- [ ] Package security scan and Source rebuild matches package are green, and
+      every review finding (and the `security-review-required` label, if set)
+      has been resolved by reading the source.
 - [ ] The protected-main custody workflow mirrored and re-downloaded the exact
       SHA-256-verified bytes without executing feature code.
 - [ ] `registry.json` uses the resulting immutable Zeus-SDR custody URL and all

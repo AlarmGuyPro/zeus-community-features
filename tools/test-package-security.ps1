@@ -689,3 +689,7 @@ if ($script:failures.Count -gt 0) {
         ($script:failures -join "`n")
 }
 Write-Host "Package security scanner tests passed: $($script:passed) cases."
+
+# Native commands above may leave a non-zero $LASTEXITCODE from cases that
+# are expected to fail; the GitHub pwsh wrapper would exit with it.
+exit 0

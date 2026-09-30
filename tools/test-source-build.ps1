@@ -244,3 +244,7 @@ finally {
 }
 
 Write-Host "Source rebuild contract regression tests passed."
+
+# Native commands above may leave a non-zero $LASTEXITCODE from cases that
+# are expected to fail; the GitHub pwsh wrapper would exit with it.
+exit 0

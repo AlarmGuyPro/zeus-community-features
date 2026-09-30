@@ -1,0 +1,114 @@
+name: Source rebuild matches package
+
+# Rebuilds the new or changed community version from its pinned source and
+# compares the result with the submitted ZIP. The build job runs contributor
+# build code (only inside a bubblewrap sandbox with no network and a
+# read-only host filesystem), so this workflow uses pull_request (fork token
+# is read-only, no secrets, no cache writes) and never pull_request_target.
+#
+# pull_request runs the workflow and tools from the pull request itself. The
+# "Trusted community submission policy" check, which rejects listing pull
+# requests that touch anything but registry.json, must therefore be a
+# required status check, or a fork could edit this workflow.
+#
+# The verdict comes from the separate compare job: it never runs contributor
+# code, re-clones the source as data, re-validates zeus-build.json, and
+# compares the transferred rebuilt trees with the SHA-256-verified package.
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: source-rebuild-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+  DOTNET_NOLOGO: '1'
+
+jobs:
+  build:
+    name: Rebuild from pinned source
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Read base registry
+        run: git show HEAD^1:registry.json > "$RUNNER_TEMP/base-registry.json"
+      - name: Clone pinned source and read its SDK pin (no contributor code runs)
+        id: prepare
+        shell: pwsh
+        run: >-
+          ./tools/invoke-source-rebuild.ps1
+          -Phase Prepare
+          -BaseRegistryPath (Join-Path $env:RUNNER_TEMP 'base-registry.json')
+          -CandidateRegistryPath registry.json
+          -WorkDirectory (Join-Path $env:RUNNER_TEMP 'source-rebuild')
+          -PinnedGlobalJsonPath (Join-Path $env:RUNNER_TEMP 'pinned-sdk/global.json')
+      - name: Install exactly the pinned .NET SDK
+        if: steps.prepare.outputs.count != '0'
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          global-json-file: ${{ steps.prepare.outputs.global-json }}
+      - name: Install bubblewrap and allow unprivileged user namespaces
+        if: steps.prepare.outputs.count != '0'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends bubblewrap
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - name: Build in the offline sandbox
+        if: steps.prepare.outputs.count != '0'
+        shell: pwsh
+        run: >-
+          ./tools/invoke-source-rebuild.ps1
+          -Phase Build
+          -BaseRegistryPath (Join-Path $env:RUNNER_TEMP 'base-registry.json')
+          -CandidateRegistryPath registry.json
+          -WorkDirectory (Join-Path $env:RUNNER_TEMP 'source-rebuild')
+      - name: Transfer rebuilt trees
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: source-rebuild-trees
+          path: ${{ runner.temp }}/source-rebuild/trees/*/rebuilt/
+          if-no-files-found: ignore
+          retention-days: 3
+
+  compare:
+    name: Source rebuild matches package
+    needs: build
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Read base registry
+        run: git show HEAD^1:registry.json > "$RUNNER_TEMP/base-registry.json"
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Receive rebuilt trees
+        continue-on-error: true
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: source-rebuild-trees
+          path: ${{ runner.temp }}/source-rebuild-trees
+      - name: Compare rebuilt trees with the verified packages
+        shell: pwsh
+        run: >-
+          ./tools/invoke-source-rebuild.ps1
+          -Phase Verify
+          -BaseRegistryPath (Join-Path $env:RUNNER_TEMP 'base-registry.json')
+          -CandidateRegistryPath registry.json
+          -WorkDirectory (Join-Path $env:RUNNER_TEMP 'source-verify')
+          -TreesDirectory (Join-Path $env:RUNNER_TEMP 'source-rebuild-trees')

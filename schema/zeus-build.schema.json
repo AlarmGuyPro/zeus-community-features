@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Zeus-SDR/zeus-community-features/main/schema/zeus-build.schema.json",
+  "title": "Zeus community feature rebuild contract",
+  "description": "zeus-build.json at the root of a community feature's source repository. The catalog rebuild check restores dependencies online, builds offline, and compares the rebuilt files with the submitted ZIP. tools/verify-source-build.ps1 additionally enforces path containment, rejects links, and requires every ZIP file to be accounted for.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "dotnet", "package"],
+  "properties": {
+    "schemaVersion": { "type": "integer", "const": 1 },
+    "dotnet": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["project", "configuration"],
+      "properties": {
+        "project": {
+          "$ref": "#/$defs/relativePath",
+          "pattern": "\\.csproj$",
+          "description": "Feature project, relative to the repository root. Its build output supplies every DLL and the entrypoint .deps.json in the ZIP."
+        },
+        "configuration": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,31}$",
+          "description": "MSBuild configuration, normally Release."
+        }
+      }
+    },
+    "node": {
+      "type": "array",
+      "maxItems": 8,
+      "description": "Optional browser builds, run before the .NET build in listed order.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["directory", "script"],
+        "properties": {
+          "directory": {
+            "$ref": "#/$defs/relativeDirectory",
+            "description": "Directory containing package.json and package-lock.json."
+          },
+          "script": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9:_.-]{0,63}$",
+            "description": "package.json script run with npm run."
+          }
+        }
+      }
+    },
+    "package": {
+      "type": "object",
+      "minProperties": 1,
+      "maxProperties": 4096,
+      "description": "Every ZIP file other than DLLs and the entrypoint .deps.json, mapped from its path inside the ZIP to its path in the source tree after the build.",
+      "propertyNames": { "$ref": "#/$defs/relativePath" },
+      "additionalProperties": { "$ref": "#/$defs/relativePath" }
+    }
+  },
+  "$defs": {
+    "relativePath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*//)(?!(.*/)?\\.{1,2}(/|$))[^\\u0000-\\u001f]+(?<!/)$",
+      "description": "Forward-slash path relative to the repository root: never absolute, never containing . or .. segments, backslashes, or empty segments."
+    },
+    "relativeDirectory": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "pattern": "^(\\.|(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*//)(?!(.*/)?\\.{1,2}(/|$))[^\\u0000-\\u001f]+(?<!/))$",
+      "description": "Relative directory, or . for the repository root."
+    }
+  }
+}

@@ -73,7 +73,10 @@ Use this release and submission flow:
    `subscription`, preserve all existing entries, and update the top-level
    `generated` timestamp. Set `downloadUrl` to the deterministic Zeus-SDR
    custody URL documented in [CONTRIBUTING.md](CONTRIBUTING.md#6-add-the-catalog-entry),
-   not to the contributor-owned intake URL.
+   not to the contributor-owned intake URL, and record the source repository,
+   commit, and intake URL in the version's `source` field. The source commit
+   must contain a [`zeus-build.json`](CONTRIBUTING.md#rebuild-contract-zeus-buildjson)
+   rebuild contract.
 6. **Open one catalog pull request per feature version against `main`.** Use
    `feat(registry): add <id> <version>` for a first release or
    `feat(registry): release <id> <version>` for an update. Complete the pull
@@ -87,6 +90,13 @@ tree; a normal submission changes only `registry.json`. See
 [Open the pull request](CONTRIBUTING.md#8-open-the-pull-request) for exact fork,
 branch, commit, push, and `gh pr create` commands and a complete catalog-entry
 example.
+
+Every listing pull request runs the
+[Package security scan](CONTRIBUTING.md#security-scan) (checksum, ClamAV,
+static malware and backdoor rules, OSV dependency check) and the
+[Source rebuild check](CONTRIBUTING.md#source-rebuild-check). A failure blocks
+the listing; review findings add the `security-review-required` label for a
+maintainer. Neither replaces human source review.
 
 After the source, package, permissions, styling, licensing, and test evidence
 pass review, either maintainer runs the protected-main custody workflow. It

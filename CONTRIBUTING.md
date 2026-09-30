@@ -56,7 +56,14 @@ compatibility mechanisms, not a security sandbox or warranty.
 6. Keep the complete corresponding source, project files, dependency lockfiles,
    build/package scripts, license, and notices public. Tag the exact source used
    for every submitted release so reviewers can reproduce and audit it.
-7. Build and package from a clean checkout on every declared platform.
+   Commit `package-lock.json` for every browser build, and enable
+   `<RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>` so NuGet
+   writes a `packages.lock.json`; the dependency scan and the rebuild check
+   require them.
+7. Add a `zeus-build.json` rebuild contract and a `global.json` SDK pin at the
+   repository root (below).
+8. Build and package from a clean checkout of the exact commit you will submit,
+   on every declared platform.
 
 The ZIP must contain exactly one top-level `plugin.json` and the entrypoint DLL
 named by that manifest. Do not bundle `Zeus.Plugins.Contracts.dll`, framework
@@ -76,6 +83,155 @@ license, and notices. List each additional managed DLL by plain filename with
 
 Every input is containment-checked, links are rejected, and collisions fail the
 build. Do not modify the script to bypass these checks.
+
+### Rebuild contract (`zeus-build.json`)
+
+Every new community version must be reproducible from its public source. CI
+clones `source.repository` at `source.commit`, rebuilds the feature, and
+compares the rebuilt files with the submitted ZIP. Describe the build in
+`zeus-build.json` at the source repository root. The shape is defined by
+[`schema/zeus-build.schema.json`](schema/zeus-build.schema.json):
+
+```json
+{
+  "schemaVersion": 1,
+  "dotnet": {
+    "project": "src/CallsignLogger/CallsignLogger.csproj",
+    "configuration": "Release"
+  },
+  "node": [
+    { "directory": "web", "script": "build" }
+  ],
+  "package": {
+    "plugin.json": "src/CallsignLogger/plugin.json",
+    "LICENSE": "LICENSE",
+    "THIRD-PARTY-NOTICES.txt": "THIRD-PARTY-NOTICES.txt",
+    "ui/callsign-logger.js": "web/dist/callsign-logger.js"
+  }
+}
+```
+
+- `dotnet.project` is the feature project. Every DLL in the ZIP and the
+  entrypoint `.deps.json` are taken from its build output, so never list them
+  under `package`.
+- `node` is optional. Each entry names a directory containing `package.json`
+  and `package-lock.json` and the npm script that builds the browser module.
+  Browser builds run before the .NET build, in the listed order.
+- `package` maps every other file in the ZIP (path inside the ZIP) to where that
+  file exists in the source tree after the build. Every ZIP file must be
+  accounted for, and every mapping must name a file the ZIP contains. Files the
+  .NET build writes to its output directory can be mapped from
+  `.zeus-build/out/<file>`, the output directory the check uses.
+- Every path is relative to the repository root, uses forward slashes, and must
+  not be absolute, contain `.` or `..` segments, point inside `.git`, or pass
+  through a symbolic link.
+
+Two more files are required at the source repository root:
+
+- `global.json` pins one exact .NET SDK and forbids roll-forward. CI installs
+  exactly that SDK. Nothing else (such as `msbuild-sdks`) is allowed:
+
+  ```json
+  { "sdk": { "version": "10.0.100", "rollForward": "disable" } }
+  ```
+
+- `packages.lock.json` beside every project that restores NuGet packages. Set
+  `<RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>` (for
+  example in `Directory.Build.props`), restore once, and commit the lock files.
+  A project with `PackageReference` items and no lock file fails.
+
+The check runs in this order, on a disposable Linux runner without secrets:
+
+1. It validates `zeus-build.json`, `global.json`, and the ZIP's archive safety.
+2. It deletes every mapped file and `.zeus-build/` before building, so a
+   committed prebuilt file cannot stand in for build output. A committed file
+   is kept and packaged as committed only when its ZIP path and its source path
+   both look like plain text or images (such as `LICENSE`, `plugin.json`,
+   `*.md`, `*.txt`, `*.json`, `*.css`, and images) and its content does not
+   start with an executable or archive header.
+3. Trusted tooling, not your build, downloads every package listed in your
+   `packages.lock.json` files from nuget.org and checks each one against the
+   lock file's SHA-512 `contentHash`. They become a local package feed; no
+   other package source is available to the build.
+4. `npm ci --ignore-scripts` installs browser dependencies from
+   `https://registry.npmjs.org/` only. Install scripts never run, and any
+   `.npmrc` in your repository is ignored. Every `package-lock.json` entry must
+   resolve from `https://registry.npmjs.org/` and have an `integrity` hash;
+   git, tarball, or other-registry dependencies fail.
+5. It proves the build sandbox is isolated, then runs every step that executes
+   your code inside it: `dotnet restore --locked-mode` from the local feed,
+   `npm run <script> --ignore-scripts`, and `dotnet build --no-restore`. The
+   sandbox has no network, its own process space (nothing it starts survives
+   it), no privileges, and can write only to your source tree and a private
+   home directory; the rest of the machine is read-only.
+6. A separate job that never runs contributor code compares the rebuilt files
+   with the ZIP. Assemblies are compared by their metadata (types, members,
+   referenced APIs, strings, resources, native imports) and method bodies, so
+   differences such as build paths do not matter but any code difference fails.
+   The `.deps.json` is compared as JSON without package hash fields. Other
+   files must match byte for byte, and extra or missing files fail.
+
+The rebuild check has no review tier: it passes or fails. It also fails when:
+
+- the source repository tracks an executable or archive, detected by file
+  header (Windows, Linux, and macOS executables, ZIP, gzip, WebAssembly) or by
+  extension (`*.dll`, `*.exe`, `*.so`, `*.dylib`, `*.zip`, `*.nupkg`, and
+  similar);
+- a NuGet package other than `Microsoft.*` or `System.*` (prefixes only
+  Microsoft can publish on nuget.org) ships
+  analyzers, source generators, MSBuild targets, content files, or tools
+  (`analyzers/`, `build/`, `buildTransitive/`, `buildMultiTargeting/`,
+  `contentFiles/`, `tools/`), because they inject code or files that are not
+  in your source. To use such a package, open an issue naming the exact
+  package ID and version and why it is needed. If a maintainer approves it,
+  they add it to [`tools/rebuild-package-allowlist.json`](tools/rebuild-package-allowlist.json)
+  in a separate maintainer pull request; never edit that file in a listing
+  pull request;
+- restore uses any package that is not in a lock file, or the project moves
+  `obj/` away from its default location;
+- the repository's MSBuild is not plain declarative data. The rules are an
+  allowlist kept in `tools/SourceRebuild.psm1`:
+  - only `.csproj` and `.props` files are allowed; any `.targets`, `.tasks`,
+    `.user`, `.rsp` (including `Directory.Build.rsp`), other project type, or
+    committed `bin/` or `obj/` directory fails;
+  - allowed elements are `Project` (with `Sdk` exactly `Microsoft.NET.Sdk`,
+    `Microsoft.NET.Sdk.Web`, or `Microsoft.NET.Sdk.Razor`), `PropertyGroup`,
+    `ItemGroup`, `Choose`/`When`/`Otherwise`, and `Import` of another linted
+    `.props` file in the repository by literal path;
+  - only allowlisted property names (for example `TargetFramework`,
+    `AssemblyName`, `Version`, `Nullable`, `ImplicitUsings`, `NoWarn`,
+    `CopyLocalLockFileAssemblies`, `EnableDynamicLoading`,
+    `RestorePackagesWithLockFile` set to `true`), item types (`Compile`,
+    `None`, `Content`, `EmbeddedResource`, `PackageReference`,
+    `PackageVersion`, `ProjectReference`, `FrameworkReference`, `Using`,
+    `InternalsVisibleTo`, `AssemblyAttribute`, `Folder`), and item metadata;
+  - values may use plain `$(Property)` references and a few `[MSBuild]::`
+    path and version helpers only; no other property functions, item or
+    metadata references, or escapes, including in conditions;
+  - item paths are literal, repository-relative, never under `node_modules/`,
+    `obj/`, `bin/`, or `.git/`, and wildcards need a directory prefix that
+    does not contain a project or browser build directory;
+  - items that add files (`Compile`, `None`, `Content`, `EmbeddedResource`
+    `Include`) belong in a `.csproj` and may name only committed files; a
+    wildcard that matches any uncommitted file fails;
+  - `CopyToOutputDirectory` is allowed only for one literal, committed text or
+    image file.
+  If your feature needs something outside the allowlist, open an issue and ask
+  a maintainer to extend it;
+- a browser build directory (`node[].directory`) is inside, equal to, or
+  contains a .NET project directory; keep them in separate directories and
+  package browser output through the `package` mapping;
+- after the browser build, any untracked, ignored, or modified file exists
+  inside a .NET project directory (other than that project's own `obj/` and
+  `bin/`), because MSBuild's default item globs would compile or package it;
+- an `npm-shrinkwrap.json` exists in a browser build directory or any parent
+  up to the repository root, or a `package-lock.json` link points outside the
+  repository;
+- the rebuilt files contain a symbolic link.
+
+Build the submitted ZIP from the same commit you record in `source`, with the
+SDK pinned in `global.json`; the commit hash is stamped into the assembly
+version metadata, so a ZIP built from any other commit will not match.
 
 ## 3. Manifest schema and naming rules
 
@@ -224,6 +380,8 @@ If `gh repo fork` names the source remote differently, use the source remote
 shown by `git remote -v`; do not guess. A listing pull request must:
 
 - add one new community feature or one new version of one community feature;
+- include `source` (repository, commit, and intake package URL) on the new
+  version;
 - edit only `registry.json`;
 - leave every `channel: "official"` entry untouched;
 - set a new entry's `channel` to `community` and `verified` to `false`;
@@ -244,9 +402,10 @@ https://github.com/Zeus-SDR/zeus-community-features/releases/download/community-
 
 For `com.example.callsignlogger` version `1.0.0`, that is
 `https://github.com/Zeus-SDR/zeus-community-features/releases/download/community-com.example.callsignlogger-v1.0.0/com.example.callsignlogger-1.0.0.zip`.
-Put the contributor-owned intake URL in the pull request template, not in the
-final `registry.json`. The custody URL intentionally returns 404 until a
-maintainer completes the custody gate.
+Record the contributor-owned intake URL in the new version's `source.package`
+field and in the pull request template; never use it as `downloadUrl`. The
+custody URL intentionally returns 404 until a maintainer completes the custody
+gate.
 
 New entries use this exact shape:
 
@@ -267,10 +426,33 @@ New entries use this exact shape:
     "sdkMinVersion": "1.5.0",
     "platforms": ["any"],
     "downloadUrl": "https://github.com/Zeus-SDR/zeus-community-features/releases/download/community-com.example.callsignlogger-v1.0.0/com.example.callsignlogger-1.0.0.zip",
-    "sha256": "64-lowercase-hex-characters"
+    "sha256": "64-lowercase-hex-characters",
+    "source": {
+      "repository": "https://github.com/example/callsignlogger",
+      "commit": "40-lowercase-hex-character-commit-sha",
+      "package": "https://github.com/example/callsignlogger/releases/download/v1.0.0/com.example.callsignlogger-1.0.0.zip"
+    }
   }]
 }
 ```
+
+### Source provenance (`source`)
+
+Every community version added from now on must include a `source` object.
+Versions listed before this requirement are unchanged, and official entries
+are exempt.
+
+| Field | Value |
+|---|---|
+| `repository` | `https://github.com/<owner>/<repository>`, with no trailing `.git` or slash. |
+| `commit` | The full 40-character lowercase commit SHA the ZIP was built from. It must contain `zeus-build.json`. |
+| `package` | The contributor intake ZIP on a versioned GitHub Release. Its bytes must match `sha256`. |
+
+The security scan downloads `source.package`, the rebuild check clones
+`source.repository` at `source.commit`, and the maintainer custody workflow
+refuses an intake URL that differs from `source.package`. Zeus ignores
+catalog fields it does not recognize, so `source` does not affect existing
+Zeus installs.
 
 Use `platforms: ["any"]` only for a fully managed, platform-neutral package.
 List every actual runtime identifier when the ZIP contains native or
@@ -305,6 +487,25 @@ pwsh tools/validate-package.ps1 `
   -ExpectedSdkMinVersion 1.5.0 `
   -ManifestSchemaPath schema/plugin.schema.json
 ```
+
+Also validate your rebuild contract, and on Linux reproduce the rebuild check
+from a fresh clone of the exact commit you will submit (the output directory
+must be empty and outside the clone):
+
+```powershell
+npx --yes -p ajv-cli@5.0.0 -p ajv-formats@3.0.1 ajv validate --spec=draft2020 --strict=false -c ajv-formats -s schema/zeus-build.schema.json -d /absolute/path/to/feature-clone/zeus-build.json
+pwsh tools/verify-source-build.ps1 `
+  -PackagePath /absolute/path/to/your-feature-1.0.0.zip `
+  -SourceDirectory /absolute/path/to/feature-clone `
+  -OutputDirectory /absolute/path/to/empty-output
+```
+
+`verify-source-build.ps1` deletes mapped build outputs in the clone, needs the
+SDK pinned in `global.json`, bubblewrap (`bwrap`), and unprivileged user
+namespaces; on Ubuntu 24.04 install `bubblewrap` and enable them with
+`sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0`. It fails
+closed if it cannot prove the sandbox has no network and cannot write outside
+the clone.
 
 CI also validates `registry.json` and the template manifest directly against
 their JSON schemas. Before custody, validate the contributor ZIP directly with
@@ -354,6 +555,52 @@ never checks out or executes fork code. The checks validate catalog shape and
 policy, custody URLs, hashes, embedded manifests, SDK metadata, package safety,
 the SDK boundary, and builds on Linux, Windows, and macOS x64/arm64.
 
+### Security scan
+
+**Package security scan** runs protected-main tooling on every new or changed
+community version. It never checks out or runs code from the fork or the
+feature. For each version it:
+
+1. downloads `source.package` over HTTPS with a 256 MiB limit and verifies the
+   SHA-256 from `registry.json` before anything else reads the file;
+2. applies the archive safety rules and scans the ZIP and its extracted files
+   with ClamAV; any detection fails;
+3. runs the static package scanner, which reads assemblies, browser modules,
+   and other files as data and looks for malware and backdoor patterns such as
+   undeclared network, file, process, or native-code use, dynamic code
+   loading, obfuscation, and hidden endpoints (rules:
+   [`tools/package-security-rules.md`](tools/package-security-rules.md));
+4. clones the pinned source as data only and checks its `packages.lock.json`,
+   `package-lock.json`, and project `PackageReference` versions against the
+   OSV vulnerability database. A known-malicious package fails; a vulnerable or
+   unpinned dependency needs review.
+
+Each finding is **fail**, **review**, or **info**. Any fail turns the check red
+and blocks the listing. Review items keep the check green but add the
+`security-review-required` label, and a maintainer must look at them before
+approving. A clear result removes the label. The scan posts one summary comment
+on the pull request and updates it on every push; the full JSON report is kept
+with the workflow run. If a finding is a false positive, explain it in the
+pull request; do not change the scanner or its allowlist in a listing pull
+request.
+
+### Source rebuild check
+
+**Source rebuild matches package** rebuilds the feature from
+`source.repository` at `source.commit` using `zeus-build.json` and compares the
+result with the ZIP, as described in
+[Rebuild contract](#rebuild-contract-zeus-buildjson). A missing
+`zeus-build.json` or `global.json`, a build failure, a tracked binary, an
+unapproved build-time package, or any difference between the rebuilt files and
+the ZIP fails the check. There is no review tier.
+
+Both checks handle exactly one new or changed community version; a pull request
+that touches more than one fails.
+
+Both checks prove less than a human review. Static rules and signatures can be
+evaded, and a rebuild only shows that the ZIP matches the source, not that the
+source is safe. Maintainers still read the source before approving.
+
 ## 9. Review, merge, and store publication
 
 Protected `main` requires passing checks, resolved conversations, and approval
@@ -370,7 +617,9 @@ SHA-256. The workflow:
    GitHub API without checking out the contributor branch;
 2. downloads the intake ZIP as inert data with a compressed-size limit;
 3. verifies SHA-256, archive safety, schema, manifest, SDK, and catalog metadata
-   using tools checked out explicitly from protected `main`;
+   using tools checked out explicitly from protected `main`, requires the intake
+   URL to equal the version's `source.package`, and refuses custody when the
+   package security scanner returns a fail result;
 4. transfers only those validated bytes to a separate write-scoped job;
 5. uploads, re-downloads, and re-verifies the exact ZIP before publishing its
    deterministic Zeus-SDR release, then verifies GitHub's immutable-release

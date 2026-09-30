@@ -36,6 +36,11 @@ $release = $releases[0]
 if ([string]$release.sha256 -cne $ExpectedSha256) {
     throw "Workflow SHA-256 does not match registry.json for $FeatureId@$Version"
 }
+$releaseSource = Get-VersionSource -Release $release
+if ($null -ne $releaseSource -and -not [string]::IsNullOrWhiteSpace($SourceUrl) -and
+    $SourceUrl -cne [string]$releaseSource.package) {
+    throw "Workflow intake URL does not match source.package in registry.json for $FeatureId@$Version"
+}
 $custodyUrl = Get-CommunityCustodyUrl -FeatureId $FeatureId -Version $Version
 Assert-CommunityCustodyUrl `
     -FeatureId $FeatureId `

@@ -114,6 +114,22 @@ jobs:
             -ExpectedSha256 $env:CUSTODY_SHA256 `
             -SourceUrl $env:CUSTODY_SOURCE_URL `
             -OutputDirectory (Join-Path $env:RUNNER_TEMP 'custody-package')
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Refuse custody when the package security scan fails
+        shell: pwsh
+        run: |
+          Import-Module ./tools/SecurityScan.psm1 -Force
+          Initialize-PackageScanner
+          $package = Join-Path $env:RUNNER_TEMP "custody-package/$env:CUSTODY_FEATURE_ID-$env:CUSTODY_VERSION.zip"
+          $scan = Invoke-PackageScanner -Mode scan -PackagePath $package `
+            -JsonPath (Join-Path $env:RUNNER_TEMP 'custody-security-scan.json') `
+            -AllowlistPath tools/package-security-allowlist.json
+          "Package security scan: $($scan.disposition)" | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
+          if ($scan.disposition -eq 'fail') {
+            throw 'Package security scan failed; custody refused'
+          }
       - name: Transfer the exact validated bytes
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:

@@ -130,6 +130,31 @@
           "type": "string",
           "pattern": "^[0-9a-f]{64}$",
           "description": "Lowercase SHA-256 of the exact release ZIP."
+        },
+        "source": { "$ref": "#/$defs/versionSource" }
+      }
+    },
+    "versionSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "commit", "package"],
+      "description": "Public source provenance for one release. Repository policy requires it on every community version added after the package security scan was introduced; older versions are grandfathered and official versions are exempt. Zeus ignores this field.",
+      "properties": {
+        "repository": {
+          "type": "string",
+          "pattern": "^https://github\\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$",
+          "not": { "pattern": "\\.git$" },
+          "description": "Public GitHub source repository, without a trailing .git or slash."
+        },
+        "commit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$",
+          "description": "Full lowercase commit SHA the package was built from."
+        },
+        "package": {
+          "type": "string",
+          "pattern": "^https://github\\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/releases/download/[^/?#%]+/[^/?#%]+\\.zip$",
+          "description": "Contributor intake GitHub Releases ZIP whose bytes match sha256."
         }
       }
     }

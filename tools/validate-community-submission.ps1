@@ -9,6 +9,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
+Import-Module (Join-Path $PSScriptRoot "CommunityCustody.psm1") -Force
 if ([string]::IsNullOrWhiteSpace($ExpectedFeatureId) -ne
     [string]::IsNullOrWhiteSpace($ExpectedVersion)) {
     throw "ExpectedFeatureId and ExpectedVersion must be supplied together"
@@ -89,6 +90,7 @@ if ($newIds.Count -eq 1 -and $changedIds.Count -eq 0) {
     if ($added.channel -cne "community" -or @($added.versions).Count -ne 1) {
         throw "A new listing must add one community feature with one version"
     }
+    Assert-NewCommunityVersionSource -FeatureId ([string]$added.id) -Release $added.versions[0]
     Assert-ExpectedSubmission -FeatureId ([string]$added.id) `
         -Version ([string]$added.versions[0].version)
     Write-Host "Validated new community feature: $($added.id)@$($added.versions[0].version)"
@@ -121,6 +123,7 @@ if ($newIds.Count -eq 0 -and $changedIds.Count -eq 1) {
         [string]$after.versions[0].version -cne $newVersions[0]) {
         throw "A release PR must prepend exactly one new immutable version"
     }
+    Assert-NewCommunityVersionSource -FeatureId $id -Release $after.versions[0]
     Assert-ExpectedSubmission -FeatureId $id -Version ([string]$newVersions[0])
     Write-Host "Validated new community release: $id@$($newVersions[0])"
     return

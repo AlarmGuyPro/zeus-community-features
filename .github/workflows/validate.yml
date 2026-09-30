@@ -46,6 +46,23 @@ jobs:
       - name: Test catalog publication safeguards
         shell: pwsh
         run: ./tools/test-catalog-publication.ps1
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Test package security scan pipeline
+        shell: pwsh
+        run: ./tools/test-security-pipeline.ps1
+      - name: Test source rebuild contract
+        shell: pwsh
+        run: ./tools/test-source-build.ps1
+      - name: Install bubblewrap for the rebuild sandbox tests
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends bubblewrap
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - name: Test source rebuild hardening and sandbox
+        shell: pwsh
+        run: ./tools/test-rebuild-hardening.ps1
 
   build:
     name: SDK and template build (${{ matrix.name }})
@@ -79,6 +96,9 @@ jobs:
           -ExpectedVersion 1.0.0
           -ExpectedSdkAbi 1
           -ExpectedSdkMinVersion 1.5.0
+      - name: Test package security scanner
+        shell: pwsh
+        run: ./tools/test-package-security.ps1
 
   packages:
     name: HTTPS, checksum, and embedded manifests

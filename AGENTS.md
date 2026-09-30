@@ -71,6 +71,13 @@ inside a brief unless the brief says so explicitly. The brief overrides the
   dependencies, operator-felt defaults) are implemented minimally and listed
   under "Needs a human", never decided silently.
 
+## A repo with no section yet
+
+If the factory has no `repos/<name>.md` for the repository you are in, the
+skills run with defaults (base `main`, gate `git diff --check`). Before real
+work, register it: `scripts/new-repo.sh <checkout>` in the factory detects the
+stack, writes the section with real gates, and renders this file.
+
 ## Completing a task
 
 1. Keep the change to the assigned task.
@@ -133,9 +140,10 @@ policy. Passing schema validation alone is not sufficient.
 For a new feature or release:
 
 1. Build the feature in its own source repository from the public SDK and
-   `templates/hello-world/`. Do not add feature source or release binaries to
-   this repository's Git tree; approved binaries enter Zeus-SDR release custody
-   only through the maintainer workflow.
+   `templates/hello-world/`, with a `zeus-build.json` rebuild contract at its
+   root (see `CONTRIBUTING.md`). Do not add feature source or release binaries
+   to this repository's Git tree; approved binaries enter Zeus-SDR release
+   custody only through the maintainer workflow.
 2. Validate and locally install the ZIP before publishing it.
 3. Publish the exact ZIP as a `.zip` asset on a versioned public GitHub Release.
    Record its bare lowercase SHA-256 and never replace its bytes.
@@ -150,11 +158,14 @@ For a new feature or release:
    immutable.
 7. Update the top-level `generated` timestamp to the current UTC RFC 3339 time.
 8. Use the deterministic Zeus-SDR custody `downloadUrl` from
-   `CONTRIBUTING.md`; keep the contributor-owned intake URL in the pull request
-   evidence, not in the final catalog entry.
+   `CONTRIBUTING.md`. Add `source` to the new version: the public
+   `repository`, the full `commit` SHA the ZIP was built from, and the
+   contributor-owned intake ZIP URL as `package`. Never use the intake URL as
+   `downloadUrl`.
 9. Run every contributor command in the “Required local checks” section of
    `CONTRIBUTING.md`, then open a pull request to `main` and complete the pull
-   request template with real evidence.
+   request template with real evidence. The Package security scan and Source
+   rebuild checks must pass; explain any review finding in the pull request.
 10. If the feature has UI, attach the required dark/light, normal/narrow,
     200%-scaling, keyboard-focus, and applicable state screenshots. Do not
     replace screenshots with a text-only claim that the UI was tested.

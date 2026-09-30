@@ -61,6 +61,8 @@ try {
             if ([string]$version.sha256 -cnotmatch "^[0-9a-f]{64}$") {
                 throw "$key SHA-256 must be lowercase hexadecimal"
             }
+            $source = Get-VersionSource -Release $version
+            if ($null -ne $source) { Assert-VersionSource -Key $key -Source $source }
             if ($plugin.channel -eq "community") {
                 Assert-CommunityCustodyUrl `
                     -FeatureId ([string]$plugin.id) `

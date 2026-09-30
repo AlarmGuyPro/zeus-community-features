@@ -1,5 +1,6 @@
 <Solution>
   <Project Path="sdk/Zeussdr.Zeus.Plugins.Contracts/Zeus.Plugins.Contracts.csproj" />
   <Project Path="templates/hello-world/Zeus.Community.HelloWorld.csproj" />
+  <Project Path="tools/PackageSecurityScan/PackageSecurityScan.csproj" />
 </Solution>
 

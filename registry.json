@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generated": "2026-09-30T21:26:37Z",
+  "generated": "2026-10-12T16:01:43Z",
   "plugins": [
     {
       "id": "com.openhpsdr.zeus.plugins.localsignon",
@@ -765,6 +765,36 @@
             "repository": "https://github.com/AlarmGuyPro/Zeus-PowerStation",
             "commit": "00e8a6e2583c66e2659be0c869893039e7fb95c3",
             "package": "https://github.com/AlarmGuyPro/Zeus-PowerStation/releases/download/v1.1.0/io.github.alarmguypro.powerstation-1.1.0.zip"
+          }
+        }
+      ]
+    },
+    {
+      "id": "io.github.alarmguypro.meshmessenger",
+      "channel": "community",
+      "name": "Mesh Messenger",
+      "description": "Read, send and reply to Meshtastic and MeshCore messages through Wi-Fi-connected LoRa nodes, in one inbox that keeps each network separate.",
+      "author": "KQ4WLR",
+      "license": "GPL-3.0-or-later",
+      "homepage": "https://github.com/AlarmGuyPro/Zeus-MeshMessanger",
+      "categories": [
+        "tools"
+      ],
+      "verified": false,
+      "versions": [
+        {
+          "version": "0.4.1",
+          "sdkAbi": 1,
+          "sdkMinVersion": "1.5.0",
+          "platforms": [
+            "any"
+          ],
+          "downloadUrl": "https://github.com/Zeus-SDR/zeus-community-features/releases/download/community-io.github.alarmguypro.meshmessenger-v0.4.1/io.github.alarmguypro.meshmessenger-0.4.1.zip",
+          "sha256": "a854b549ce4717da09a16558cf533584771ae9c60649347de2c9b63ab28c53fc",
+          "source": {
+            "repository": "https://github.com/AlarmGuyPro/Zeus-MeshMessanger",
+            "commit": "f4e26ca7cba194ae713a25d7b60d8fa653bcb391",
+            "package": "https://github.com/AlarmGuyPro/Zeus-MeshMessanger/releases/download/v0.4.1/io.github.alarmguypro.meshmessenger-0.4.1.zip"
           }
         }
       ]
